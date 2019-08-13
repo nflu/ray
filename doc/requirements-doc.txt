@@ -3,9 +3,10 @@ click
 filelock
 flatbuffers
 funcsigs
+jsonschema
 mock
 numpy
-opencv-python
+opencv-python-headless
 pyarrow
 pyyaml
 recommonmark

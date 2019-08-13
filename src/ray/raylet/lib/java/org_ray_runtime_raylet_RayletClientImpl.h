@@ -18,10 +18,10 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeInit(
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeSubmitTask
- * Signature: (J[BLjava/nio/ByteBuffer;II)V
+ * Signature: (J[B)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSubmitTask(
-    JNIEnv *, jclass, jlong, jbyteArray, jobject, jint, jint);
+    JNIEnv *, jclass, jlong, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
@@ -41,27 +41,8 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeDestroy(JNIEnv *, jclass, jlo
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeFetchOrReconstruct
- * Signature: (J[[BZ[B)I
- */
-JNIEXPORT jint JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeFetchOrReconstruct(JNIEnv *, jclass,
-                                                                      jlong, jobjectArray,
-                                                                      jboolean,
-                                                                      jbyteArray);
-
-/*
- * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeNotifyUnblocked
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyUnblocked(
-    JNIEnv *, jclass, jlong, jbyteArray);
-
-/*
- * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeWaitObject
- * Signature: (J[[BIIZ)[Z
+ * Signature: (J[[BIIZ[B)[Z
  */
 JNIEXPORT jbooleanArray JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(JNIEnv *, jclass, jlong,
@@ -70,23 +51,69 @@ Java_org_ray_runtime_raylet_RayletClientImpl_nativeWaitObject(JNIEnv *, jclass, 
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
- * Method:    nativeGenerateTaskId
+ * Method:    nativeGenerateActorCreationTaskId
  * Signature: ([B[BI)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateTaskId(JNIEnv *, jclass,
-                                                                  jbyteArray, jbyteArray,
-                                                                  jint);
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorCreationTaskId(
+    JNIEnv *, jclass, jbyteArray, jbyteArray, jint);
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeGenerateActorTaskId
+ * Signature: ([B[BI[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateActorTaskId(JNIEnv *, jclass,
+                                                                       jbyteArray,
+                                                                       jbyteArray, jint,
+                                                                       jbyteArray);
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeGenerateNormalTaskId
+ * Signature: ([B[BI)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeGenerateNormalTaskId(JNIEnv *, jclass,
+                                                                        jbyteArray,
+                                                                        jbyteArray, jint);
 
 /*
  * Class:     org_ray_runtime_raylet_RayletClientImpl
  * Method:    nativeFreePlasmaObjects
- * Signature: (J[[BZ)V
+ * Signature: (J[[BZZ)V
  */
 JNIEXPORT void JNICALL
 Java_org_ray_runtime_raylet_RayletClientImpl_nativeFreePlasmaObjects(JNIEnv *, jclass,
                                                                      jlong, jobjectArray,
-                                                                     jboolean);
+                                                                     jboolean, jboolean);
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativePrepareCheckpoint
+ * Signature: (J[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_raylet_RayletClientImpl_nativePrepareCheckpoint(JNIEnv *, jclass,
+                                                                     jlong, jbyteArray);
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeNotifyActorResumedFromCheckpoint
+ * Signature: (J[B[B)V
+ */
+JNIEXPORT void JNICALL
+Java_org_ray_runtime_raylet_RayletClientImpl_nativeNotifyActorResumedFromCheckpoint(
+    JNIEnv *, jclass, jlong, jbyteArray, jbyteArray);
+
+/*
+ * Class:     org_ray_runtime_raylet_RayletClientImpl
+ * Method:    nativeSetResource
+ * Signature: (JLjava/lang/String;D[B)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_raylet_RayletClientImpl_nativeSetResource(
+    JNIEnv *, jclass, jlong, jstring, jdouble, jbyteArray);
 
 #ifdef __cplusplus
 }
