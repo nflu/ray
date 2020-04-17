@@ -12,13 +12,7 @@ import ray
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
-
-from deepspeed.pt.deepspeed_zero_optimizer import FP16_DeepSpeedZeroOptimizer
-import torch.distributed as dist
-from deepspeed.pt.deepspeed_constants import TORCH_DISTRIBUTED_DEFAULT_PORT
-from datetime import timedelta
-from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
-
+from ray.util.sgd.torch.deepspeed.deepspeed_operator import DeepSpeedOperator
 
 def initialization_hook():
     # Need this for avoiding a connection restart issue on AWS.
@@ -62,31 +56,15 @@ def cifar_creator(config):
 
 def optimizer_creator(model, config):
     """Returns optimizer"""
-    init_optimizer = torch.optim.SGD(
+    return torch.optim.SGD(
         model.parameters(),
         lr=config.get("lr", 0.1),
         momentum=config.get("momentum", 0.9))
 
-    # only one process ray will not initialize process group
-    if not dist.is_initialized():
-        backend = "nccl"  # used by deepspeed but ray also supports gloo
-        # Compute URL for initializing distributed PyTorch
-        ip = ray.services.get_node_ip_address()
-        port = TORCH_DISTRIBUTED_DEFAULT_PORT  # TODO something more robust here
-
-        address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-        timeout = timedelta(seconds=NCCL_TIMEOUT_S)
-        dist.init_process_group(backend=backend,
-                                init_method=address,
-                                rank=0,
-                                world_size=1,
-                                timeout=timeout)
-
-    return FP16_DeepSpeedZeroOptimizer(init_optimizer=init_optimizer)
 
 def scheduler_creator(optimizer, config):
     return torch.optim.lr_scheduler.MultiStepLR(
-        optimizer.optimizer, milestones=[150, 250, 350], gamma=0.1)  # must get inner optimizer
+        optimizer, milestones=[150, 250, 350], gamma=0.1)
 
 
 if __name__ == "__main__":
@@ -131,6 +109,7 @@ if __name__ == "__main__":
         data_creator=cifar_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=nn.CrossEntropyLoss,
+        training_operator_cls=DeepSpeedOperator,
         scheduler_creator=scheduler_creator,
         initialization_hook=initialization_hook,
         num_workers=args.num_workers,
