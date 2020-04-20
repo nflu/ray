@@ -19,7 +19,7 @@ def initialization_hook():
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
     os.environ["NCCL_LL_THRESHOLD"] = "0"
     os.environ["NCCL_DEBUG"] = "INFO"
-    os.environ["CUDA_LAUNCH_BLOCKING"] = 1
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 
 def cifar_creator(config):
