@@ -193,6 +193,47 @@ class _DummyActor:
 _dummy_actor = None
 
 
+def reserve_cuda_device(num_gpus, match_devices=False, retries=20):
+    ip = ray.services.get_node_ip_address()
+    reserved_device = None
+    cuda_device = None
+    if match_devices:
+        cuda_device = os.environ.get("CUDA_VISIBLE_DEVICES")
+        assert cuda_device, "Internal error: please file an issue on Github."
+        logger.info("Found set devices: {}".format(cuda_device))
+        assert isinstance(cuda_device, str)
+        cuda_device = cuda_device.split(",")[0]
+        logger.info("Reserving the first preset device: %s.", cuda_device)
+
+    global _dummy_actor
+
+    success = False
+    for i in range(retries):
+        if _dummy_actor is None:
+            _dummy_actor = ray.remote(
+                num_gpus=num_gpus,
+                resources={"node:" + ip: 0.1})(_DummyActor).remote()
+
+        reserved_device = ray.get(_dummy_actor.cuda_devices.remote())
+
+        if cuda_device and not reserved_device == cuda_device:
+            logger.info("Devices don't match: %s and %s", reserved_device,
+                        cuda_device)
+            _dummy_actor.__ray_terminate__.remote()
+            _dummy_actor = None
+        else:
+            success = True
+            break
+
+    if not success:
+        raise RuntimeError(
+            "Unable to reserve the set CUDA VISIBLE DEVICES on Ray. Please "
+            "make sure that Ray has access to all the visible devices: "
+            "{}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
+
+    return reserved_device
+
+
 class LocalDistributedRunner(DistributedTorchRunner):
     """A wrapper for running a distributed Runner on the driver.
 
@@ -202,42 +243,61 @@ class LocalDistributedRunner(DistributedTorchRunner):
     """
 
     def __init__(self, *args, num_cpus=None, num_gpus=None, **kwargs):
-        ip = ray.services.get_node_ip_address()
 
         # Reserve a local GPU or CPU for the local worker
         # TODO: we should make sure this NEVER dies.
         self.local_device = "0"
+        self._is_set = False
+        if num_gpus:
+            assert num_gpus == 1, "Does not support multi-gpu workers"
         global _dummy_actor
-        if not self.is_actor():
-            if _dummy_actor is None:
-                _dummy_actor = ray.remote(
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                    resources={"node:" + ip: 0.1})(_DummyActor).remote()
+        if not self.is_actor() and num_gpus > 0:
+            preset_device = os.environ.get("CUDA_VISIBLE_DEVICES")
+            if not preset_device:
+                if torch.cuda.is_initialized():
+                    device = reserve_cuda_device(num_gpus)
+                    # This needs to be set even if torch.cuda is already
+                    # initialized because the env var is used later when
+                    # starting the DDP setup.
+                    os.environ["CUDA_VISIBLE_DEVICES"] = device
 
-            self.local_device = ray.get(_dummy_actor.cuda_devices.remote())
+                    # Once cuda is initialized, torch.device ignores the os.env
+                    # so we have to set the right actual device.
+                    self._set_cuda_device(device)
 
-            # This is a pretty annoying workaround. To enable SyncBatchNorm,
-            # we need to signify that we are using only 1 CUDA device (via
-            # the DDP constructor).
-            # However, on the local worker, we have to set the
-            # CUDA_VISIBLE_DEVICES at runtime rather at process start.
-
-            # You can only call setdevice(int > 0) after you've interacted with
-            # torch.cuda. But you can't guarantee that you _haven't_ interacted
-            # with it (user can do arbitrary things), so we force an
-            # interaction.
-            _init_cuda_context()
-            os.environ["CUDA_VISIBLE_DEVICES"] = self.local_device
-
-            if self.local_device:
-                try:
-                    torch.cuda.set_device(int(self.local_device))
-                except RuntimeError:
-                    logger.error("This happens if cuda is not initialized.")
-                    raise
+                else:
+                    # if CUDA is not initialized, we can set the os.env.
+                    # and make Torch think it only sees 1 GPU.
+                    device = reserve_cuda_device(num_gpus)
+                    os.environ["CUDA_VISIBLE_DEVICES"] = device
+                    self._set_cuda_device("0")
+            else:
+                device = reserve_cuda_device(num_gpus, match_devices=True)
+                # This needs to be set even if torch.cuda is initialized
+                # because the env var is used later when starting the DDP setup
+                os.environ["CUDA_VISIBLE_DEVICES"] = device
+                # Make Torch think it only sees 1 GPU.
+                self._set_cuda_device("0")
 
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
+
+    def _set_cuda_device(self, device_str):
+        """Sets the CUDA device for this current local worker."""
+        if self._is_set:
+            raise Exception("should not be set twice..")
+        self._is_set = True
+
+        # This is idempotent. We need to call it
+        # before we call 'set_device'.
+        _init_cuda_context()
+        assert isinstance(device_str, str)
+        self.local_device = device_str
+        logger.info("Setting local device: %s", self.local_device)
+        try:
+            torch.cuda.set_device(int(self.local_device))
+        except RuntimeError:
+            logger.error("Failed to set local device.")
+            raise
 
     def get_device_ids(self):
         return [int(self.local_device)]

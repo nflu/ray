@@ -21,6 +21,10 @@ def initialization_hook():
     os.environ["NCCL_DEBUG"] = "INFO"
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
+    # set the below if needed
+    # print("NCCL DEBUG SET")
+    # os.environ["NCCL_DEBUG"] = "INFO"
+
 
 def cifar_creator(config):
     transform_train = transforms.Compose([
