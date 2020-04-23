@@ -202,7 +202,7 @@ def reserve_cuda_device(num_gpus, match_devices=False, retries=20):
         assert cuda_device, "Internal error: please file an issue on Github."
         logger.info("Found set devices: {}".format(cuda_device))
         assert isinstance(cuda_device, str)
-        cuda_device = cuda_device.split(",")[0]
+        cuda_device = cuda_device.split(",")[-1]
         logger.info("Reserving the first preset device: %s.", cuda_device)
 
     global _dummy_actor
