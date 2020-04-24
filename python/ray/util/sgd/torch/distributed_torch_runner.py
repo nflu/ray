@@ -272,7 +272,7 @@ class LocalDistributedRunner(DistributedTorchRunner):
                     os.environ["CUDA_VISIBLE_DEVICES"] = device
                     self._set_cuda_device("0")
             else:
-                device = reserve_cuda_device(num_gpus, match_devices=True)
+                device = reserve_cuda_device(num_gpus)
                 # This needs to be set even if torch.cuda is initialized
                 # because the env var is used later when starting the DDP setup
                 os.environ["CUDA_VISIBLE_DEVICES"] = device
