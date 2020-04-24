@@ -206,7 +206,6 @@ def reserve_cuda_device(num_gpus, match_devices=False, retries=20):
         logger.info("Reserving the first preset device: %s.", cuda_device)
 
     global _dummy_actor
-    unused_actors = []
 
     success = False
     for i in range(retries):
@@ -221,12 +220,9 @@ def reserve_cuda_device(num_gpus, match_devices=False, retries=20):
             logger.info("Devices don't match: %s and %s", reserved_device,
                         cuda_device)
             _dummy_actor.__ray_terminate__.remote()
-            unused_actors.append(_dummy_actor)
             _dummy_actor = None
         else:
             success = True
-            for dummy in unused_actors:
-                dummy.__ray_terminate__.remote()
             break
 
     if not success:
