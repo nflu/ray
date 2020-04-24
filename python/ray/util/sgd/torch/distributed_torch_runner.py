@@ -255,31 +255,20 @@ class LocalDistributedRunner(DistributedTorchRunner):
             assert num_gpus == 1, "Does not support multi-gpu workers"
         global _dummy_actor
         if not self.is_actor() and num_gpus > 0:
-            preset_device = os.environ.get("CUDA_VISIBLE_DEVICES")
-            if not preset_device:
-                if torch.cuda.is_initialized():
-                    device = reserve_cuda_device()
-                    # This needs to be set even if torch.cuda is already
-                    # initialized because the env var is used later when
-                    # starting the DDP setup.
-                    os.environ["CUDA_VISIBLE_DEVICES"] = device
-
-                    # Once cuda is initialized, torch.device ignores the os.env
-                    # so we have to set the right actual device.
-                    self._set_cuda_device(device)
-
-                else:
-                    # if CUDA is not initialized, we can set the os.env.
-                    # and make Torch think it only sees 1 GPU.
-                    device = reserve_cuda_device()
-                    os.environ["CUDA_VISIBLE_DEVICES"] = device
-                    self._set_cuda_device("0")
+            use_found_device = os.environ.get("CUDA_VISIBLE_DEVICES") == "" \
+                               and torch.cuda.is_initialized()
+            device = reserve_cuda_device()
+            # This needs to be set even if torch.cuda is already
+            # initialized because the env var is used later when
+            # starting the DDP setup.
+            os.environ["CUDA_VISIBLE_DEVICES"] = device
+            if use_found_device:
+                # Once cuda is initialized, torch.device ignores the os.env
+                # so we have to set the right actual device.
+                self._set_cuda_device(device)
             else:
-                device = reserve_cuda_device()
-                # This needs to be set even if torch.cuda is initialized
-                # because the env var is used later when starting the DDP setup
-                os.environ["CUDA_VISIBLE_DEVICES"] = device
-                # Make Torch think it only sees 1 GPU.
+                # if CUDA is not initialized, we can set the os.env.
+                # and make Torch think it only sees 1 GPU.
                 self._set_cuda_device("0")
 
         super(LocalDistributedRunner, self).__init__(*args, **kwargs)
