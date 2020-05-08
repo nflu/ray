@@ -4,10 +4,12 @@ import logging
 import numpy as np
 import socket
 import time
+import pandas as pd
 
 import ray
 from ray.exceptions import RayActorError
 
+import os
 logger = logging.getLogger(__name__)
 
 BATCH_COUNT = "batch_count"
@@ -225,3 +227,58 @@ def override(interface_class):
         return method
 
     return overrider
+
+
+def get_cuda_devices_list():
+    """
+    splits string of devices into list of devices, removes empty strings and
+    strips whitespace
+    :return: list of strings of devices
+    """
+    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+    devices = filter(lambda dev: bool(dev), cuda_visible_devices.split(","))
+    return [x.strip() for x in devices]
+
+
+def get_gpu_mem_usage(num_devices=None):
+    import nvidia_smi
+    import torch
+
+    if num_devices is None:
+        num_devices = len(get_cuda_devices_list())
+    data = {"torch_allocated": 0,
+            "torch_max_allocated": 0,
+            "torch_reserved": 0,
+            "torch_max_reserved": 0,
+            "total_used": 0,
+            "total_max_used": 0}
+
+    # collect data for each gpu and sum
+    for device_index in range(num_devices):
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(int(device_index))
+        mem_res = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        gpu = "torch:" + str(device_index)
+
+        # total GPU memory usage from nvidia_smi
+        data["total_used"] += mem_res.used
+        data["max_used"] += mem_res.used  # will be maxed across time at end
+
+        # torch-specific GPU memory usage
+        data["torch_allocated"] += torch.cuda.memory_allocated(gpu)
+        data["torch_max_allocated"] += torch.cuda.max_memory_allocated(gpu)
+        data["torch_reserved"] += torch.cuda.memory_reserved(gpu)
+        data["torch_max_reserved"] += torch.cuda.max_memory_reserved(gpu)
+    df = pd.DataFrame(data, index=[0])
+    return df
+
+
+def summarize_mem_usage(df):
+    import humanize  # makes memory usage human-readable
+    data = []
+    for col_name in df.columns:
+        # take max or average over time
+        if "max" in col_name:
+            data.append(humanize.naturalsize(df[col_name].max()))
+        else:
+            data.append(humanize.naturalsize(df[col_name].mean()))
+    return pd.Series(data=data, index=df.mean().index)

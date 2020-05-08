@@ -15,8 +15,8 @@ import nvidia_smi
 
 import ray
 from ray.util.sgd.torch import TorchTrainer
-from ray.util.sgd.torch.resnet import ResNet18
-from ray.util.sgd.utils import BATCH_SIZE
+from ray.util.sgd.torch.resnet import ResNet152
+from ray.util.sgd.utils import BATCH_SIZE, get_gpu_mem_usage, summarize_mem_usage
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.deepspeed.deepspeed_operator import DeepSpeedOperator
 
@@ -74,55 +74,6 @@ def optimizer_creator(model, config):
 def scheduler_creator(optimizer, config):
     return torch.optim.lr_scheduler.MultiStepLR(
         optimizer, milestones=[150, 250, 350], gamma=0.1)
-
-
-def get_gpu_mem_usage():
-    if not args.use_gpu:
-        return None
-    devices = list(filter(lambda dev: bool(dev), os.environ.get("CUDA_VISIBLE_DEVICES").split(",")))  # TODO make this a function
-    data = {
-            #"allocated": 0,
-            #"max_allocated": 0,
-            #"reserved": 0,
-            #"max_reserved": 0,
-            "used": 0,
-            "max_used": 0}
-    for gpu in devices:
-        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(int(gpu))
-        res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
-        if res.gpu > GPU_USAGE_THRESHOLD:  # only take from GPUs in use
-            mem_res = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
-            data["used"] += mem_res.used   # sum across all GPUs
-            data["max_used"] += mem_res.used  # will be maxed across time at end
-
-
-        # TODO doesn't work if on shared machine and CUDA_VISIBLE_DEVICES is not
-        # TODO contiguous and starting at 0. e.g. 1,2,4 (someone is using 0 & 3)
-        # TODO see https://github.com/pytorch/pytorch/issues/24463
-        # TODO fix is to use the entire machine and set visible devices before
-        # TODO running the job
-        '''
-        cuda_device = "cuda:" + str(gpu)
-        data["allocated"] += torch.cuda.memory_allocated(cuda_device)
-        data["max_allocated"] += torch.cuda.max_memory_allocated(cuda_device)
-        data["reserved"] += torch.cuda.memory_reserved(cuda_device)
-        data["max_reserved"] += torch.cuda.max_memory_reserved(cuda_device)
-        '''
-    df = pd.DataFrame(data, index=[0])
-    return df
-
-
-def summarize_mem_usage(df):
-    if not args.use_gpu:
-        return None
-    import humanize  # makes memory usage human-readable
-    data = []
-    for col_name in df.columns:
-        if "max" in col_name:
-            data.append(humanize.naturalsize(df[col_name].max()))
-        else:
-            data.append(humanize.naturalsize(df[col_name].mean()))
-    return pd.Series(data=data, index=df.mean().index)
 
 
 if __name__ == "__main__":
@@ -189,7 +140,7 @@ if __name__ == "__main__":
              include_webui=False)
 
     trainer1 = TorchTrainer(
-        model_creator=ResNet18,
+        model_creator=ResNet152,
         data_creator=cifar_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=nn.CrossEntropyLoss,
@@ -217,9 +168,10 @@ if __name__ == "__main__":
         train_stats = trainer1.train(max_retries=1, info=info)
         pbar.set_postfix(dict(throughput=train_stats["img_sec"]))
         if mem_usage is None:
-            mem_usage = get_gpu_mem_usage()
+            mem_usage = get_gpu_mem_usage(args.num_workers)
         else:
-            mem_usage = mem_usage.append(get_gpu_mem_usage(), ignore_index=True)
+            mem_usage = mem_usage.append(get_gpu_mem_usage(args.num_workers),
+                                         ignore_index=True)
     print(trainer1.validate())
     trainer1.shutdown()
     print("success!")
