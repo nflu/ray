@@ -83,7 +83,7 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
 extras = {
     "debug": [],
     "dashboard": ["requests"],
-    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
+    "serve": ["uvicorn", "flask", "blist"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
 
@@ -159,12 +159,15 @@ class build_ext(_build_ext.build_ext):
         source = filename
         destination = os.path.join(self.build_lib, filename)
         # Create the target directory if it doesn't already exist.
-        parent_directory = os.path.dirname(destination)
-        if not os.path.exists(parent_directory):
-            os.makedirs(parent_directory)
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
         if not os.path.exists(destination):
             print("Copying {} to {}.".format(source, destination))
-            shutil.copy(source, destination, follow_symlinks=True)
+            if sys.platform == "win32":
+                # Does not preserve file mode (needed to avoid read-only bit)
+                shutil.copyfile(source, destination, follow_symlinks=True)
+            else:
+                # Preserves file mode (needed to copy executable bit)
+                shutil.copy(source, destination, follow_symlinks=True)
 
 
 class BinaryDistribution(Distribution):
@@ -185,7 +188,7 @@ def find_version(*filepath):
 
 requires = [
     "aiohttp",
-    "click",
+    "click >= 7.0",
     "colorama",
     "filelock",
     "google",
@@ -196,7 +199,7 @@ requires = [
     "protobuf >= 3.8.0",
     "py-spy >= 0.2.0",
     "pyyaml",
-    "redis >= 3.3.2",
+    "redis >= 3.3.2, < 3.5.0",
 ]
 
 setup(

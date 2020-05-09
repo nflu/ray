@@ -25,6 +25,15 @@
 namespace ray {
 namespace gcs {
 
+#define JOB_CHANNEL "JOB"
+#define NODE_CHANNEL "NODE"
+#define NODE_RESOURCE_CHANNEL "NODE_RESOURCE"
+#define WORKER_FAILURE_CHANNEL "WORKER_FAILURE"
+#define OBJECT_CHANNEL "OBJECT"
+#define TASK_CHANNEL "TASK"
+#define TASK_LEASE_CHANNEL "TASK_LEASE"
+#define HEARTBEAT_BATCH_CHANNEL "HEARTBEAT_BATCH"
+
 /// \class GcsPubSub
 ///
 /// GcsPubSub supports publishing, subscription and unsubscribing of data.
