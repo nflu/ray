@@ -261,7 +261,7 @@ def get_gpu_mem_usage(num_devices=None):
 
         # total GPU memory usage from nvidia_smi
         data["total_used"] += mem_res.used
-        data["max_used"] += mem_res.used  # will be maxed across time at end
+        data["total_max_used"] += mem_res.used  # will be maxed across time at end
 
         # torch-specific GPU memory usage
         data["torch_allocated"] += torch.cuda.memory_allocated(gpu)
