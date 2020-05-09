@@ -6,8 +6,7 @@ from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import CIFAR10
 import torchvision.transforms as transforms
 import timeit
-import humanize
-import pandas as pd
+import numpy as np
 
 from tqdm import trange
 
@@ -131,9 +130,13 @@ if __name__ == "__main__":
                 print("Running warmup...")
                 timeit.timeit(benchmark, number=1)
                 self.global_step += 1
+
             time = timeit.timeit(benchmark, number=1)
             img_sec = args.num_workers * self.batch_size / time
-            return {"img_sec": img_sec}
+
+            stats = get_gpu_mem_usage()
+            stats["img_sec"] = img_sec
+            return stats
 
     num_cpus = 4 if args.smoke_test else None
     ray.init(address=args.address, num_cpus=num_cpus, log_to_driver=True,
@@ -159,20 +162,17 @@ if __name__ == "__main__":
         use_tqdm=True,
         training_operator_cls=Training)
     pbar = trange(args.num_epochs, unit="epoch")
-    mem_usage = None
+    stats = []
     for i in pbar:
         info = {"num_steps": 1} if args.smoke_test else {}
         info["epoch_idx"] = i
         info["num_epochs"] = args.num_epochs
         # Increase `max_retries` to turn on fault tolerance.
-        train_stats = trainer1.train(max_retries=1, info=info)
-        pbar.set_postfix(dict(throughput=train_stats["img_sec"]))
-        if mem_usage is None:
-            mem_usage = get_gpu_mem_usage(args.num_workers)
-        else:
-            mem_usage = mem_usage.append(get_gpu_mem_usage(args.num_workers),
-                                         ignore_index=True)
-    print(trainer1.validate())
+        stats.append(trainer1.train(max_retries=1, info=info,
+                                    reduce_results=False))
+    train_stats = {
+        "img_sec": np.mean([np.mean([d["img_sec"] for d in epoch] for epoch in stats)])
+        }
     trainer1.shutdown()
     print("success!")
     print("-----------------------")
@@ -181,5 +181,4 @@ if __name__ == "__main__":
     print("ZeRO:", args.use_deepspeed)
     print("throughput: {} img/sec".format(train_stats['img_sec']))
     print("GPU Memory Usage:")
-    print(summarize_mem_usage(mem_usage))
     print("----------------------")

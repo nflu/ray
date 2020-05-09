@@ -240,36 +240,34 @@ def get_cuda_devices_list():
     return [x.strip() for x in devices]
 
 
-def get_gpu_mem_usage(num_devices=None):
+def get_gpu_mem_usage():
     import nvidia_smi
     import torch
 
-    if num_devices is None:
-        num_devices = len(get_cuda_devices_list())
     data = {"torch_allocated": 0,
             "torch_max_allocated": 0,
             "torch_reserved": 0,
             "torch_max_reserved": 0,
             "total_used": 0,
-            "total_max_used": 0}
+            "total_max_used": 0,
+            "num_devices": torch.cuda.device_count()}
 
     # collect data for each gpu and sum
-    for device_index in range(num_devices):
+    for device_index in range(torch.cuda.device_count()):
         handle = nvidia_smi.nvmlDeviceGetHandleByIndex(int(device_index))
         mem_res = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
         gpu = "cuda:" + str(device_index)
 
         # total GPU memory usage from nvidia_smi
         data["total_used"] += mem_res.used
-        data["total_max_used"] += mem_res.used  # will be maxed across time at end
+        data["total_max_used"] += mem_res.used  # will be maxed across time
 
         # torch-specific GPU memory usage
         data["torch_allocated"] += torch.cuda.memory_allocated(gpu)
         data["torch_max_allocated"] += torch.cuda.max_memory_allocated(gpu)
         data["torch_reserved"] += torch.cuda.memory_reserved(gpu)
         data["torch_max_reserved"] += torch.cuda.max_memory_reserved(gpu)
-    df = pd.DataFrame(data, index=[0])
-    return df
+    return data
 
 
 def summarize_mem_usage(df):
