@@ -15,7 +15,7 @@ import nvidia_smi
 import ray
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.resnet import ResNet152
-from ray.util.sgd.utils import BATCH_SIZE, get_gpu_mem_usage, summarize_mem_usage
+from ray.util.sgd.utils import BATCH_SIZE, get_gpu_mem_usage, summarize_mem_usage, set_cuda_devices_list
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.deepspeed.deepspeed_operator import DeepSpeedOperator
 
@@ -76,7 +76,6 @@ def scheduler_creator(optimizer, config):
 
 
 if __name__ == "__main__":
-    nvidia_smi.nvmlInit()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--address",
@@ -115,6 +114,8 @@ if __name__ == "__main__":
         help="Use the GPU memory optimizations from ZeRO")
 
     args, _ = parser.parse_known_args()
+    set_cuda_devices_list(args.num_workers)
+    nvidia_smi.nvmlInit()
     SuperClass = DeepSpeedOperator if args.use_deepspeed else TrainingOperator
     class Training(SuperClass):
 

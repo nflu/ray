@@ -240,6 +240,13 @@ def get_cuda_devices_list():
     return [x.strip() for x in devices]
 
 
+def set_cuda_devices_list(num_devices):
+    devices = get_cuda_devices_list()
+    if num_devices > len(devices):
+        logger.error("requested more devices than available")
+    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(devices[:num_devices])
+
+
 def get_gpu_mem_usage():
     import nvidia_smi
     import torch
