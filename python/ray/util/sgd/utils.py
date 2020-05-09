@@ -5,6 +5,8 @@ import numpy as np
 import socket
 import time
 import pandas as pd
+import nvidia_smi
+import torch
 
 import ray
 from ray.exceptions import RayActorError
@@ -241,6 +243,11 @@ def get_cuda_devices_list():
 
 
 def set_cuda_devices_list(num_devices):
+    """
+    sets CUDA_VISIBLE_DEVICES to make num_devices many visible devices
+    :param num_devices: number of devices to make visible
+    :return: None
+    """
     devices = get_cuda_devices_list()
     if num_devices > len(devices):
         logger.error("requested more devices than available")
@@ -248,9 +255,7 @@ def set_cuda_devices_list(num_devices):
 
 
 def get_gpu_mem_usage():
-    import nvidia_smi
-    import torch
-
+    nvidia_smi.nvmlInit()
     data = {"torch_allocated": 0,
             "torch_max_allocated": 0,
             "torch_reserved": 0,
@@ -274,6 +279,7 @@ def get_gpu_mem_usage():
         data["torch_max_allocated"] += torch.cuda.max_memory_allocated(gpu)
         data["torch_reserved"] += torch.cuda.memory_reserved(gpu)
         data["torch_max_reserved"] += torch.cuda.max_memory_reserved(gpu)
+    nvidia_smi.nvmlShutdown()
     return data
 
 

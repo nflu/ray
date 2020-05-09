@@ -115,7 +115,6 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
     set_cuda_devices_list(args.num_workers)
-    nvidia_smi.nvmlInit()
     SuperClass = DeepSpeedOperator if args.use_deepspeed else TrainingOperator
     class Training(SuperClass):
 
@@ -171,6 +170,7 @@ if __name__ == "__main__":
         # Increase `max_retries` to turn on fault tolerance.
         stats.append(trainer1.train(max_retries=1, info=info,
                                     reduce_results=False))
+        print(stats)
     train_stats = {
         "img_sec": np.mean([np.mean([d["img_sec"] for d in epoch] for epoch in stats)])
         }
