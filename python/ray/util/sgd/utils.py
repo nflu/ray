@@ -257,7 +257,7 @@ def get_gpu_mem_usage(num_devices=None):
     for device_index in range(num_devices):
         handle = nvidia_smi.nvmlDeviceGetHandleByIndex(int(device_index))
         mem_res = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
-        gpu = "torch:" + str(device_index)
+        gpu = "cuda:" + str(device_index)
 
         # total GPU memory usage from nvidia_smi
         data["total_used"] += mem_res.used
