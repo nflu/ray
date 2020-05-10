@@ -10,8 +10,6 @@ import numpy as np
 
 from tqdm import trange
 
-import nvidia_smi
-
 import ray
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.resnet import ResNet50
@@ -143,7 +141,7 @@ if __name__ == "__main__":
              include_webui=False)
 
     trainer1 = TorchTrainer(
-        model_creator=ResNet152,
+        model_creator=ResNet50,
         data_creator=cifar_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=nn.CrossEntropyLoss,
