@@ -14,7 +14,7 @@ import nvidia_smi
 
 import ray
 from ray.util.sgd.torch import TorchTrainer
-from ray.util.sgd.torch.resnet import ResNet152
+from ray.util.sgd.torch.resnet import ResNet50
 from ray.util.sgd.utils import BATCH_SIZE, get_gpu_mem_usage, summarize_mem_usage, set_cuda_devices_list
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.deepspeed.deepspeed_operator import DeepSpeedOperator
