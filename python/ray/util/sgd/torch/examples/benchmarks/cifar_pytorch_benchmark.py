@@ -147,7 +147,7 @@ if __name__ == "__main__":
     print("ZeRO:", args.use_deepspeed)
     print("-----------------------")
 
-    ray.init(address=args.address, num_cpus=num_cpus, log_to_driver=True,
+    ray.init(address=args.address, num_cpus=args.num_cpus, log_to_driver=True,
              include_webui=False)
 
     trainer1 = TorchTrainer(
