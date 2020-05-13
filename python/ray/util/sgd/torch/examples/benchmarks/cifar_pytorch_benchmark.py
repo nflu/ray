@@ -181,6 +181,6 @@ if __name__ == "__main__":
     print("ZeRO:", args.use_deepspeed)
     print("throughput: {} img/sec".format(data[img_sec]))
     experiment_name = 'num_workers_' + str(args.num_workers) + 'fp16_' + str(args.fp16) + \
-                      'ZeRO_' + str(args.fp16)
+                      'ZeRO_' + str(args.use_deepspeed)
     data = summarize_mem_usage(data, display=True, save=experiment_name)
     print("-----------------------")
