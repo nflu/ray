@@ -17,8 +17,6 @@ from ray.util.sgd.utils import BATCH_SIZE, get_gpu_mem_usage, summarize_mem_usag
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.deepspeed.deepspeed_operator import DeepSpeedOperator
 
-GPU_USAGE_THRESHOLD = 10.0
-
 
 def initialization_hook():
     # Need this for avoiding a connection restart issue on AWS.
@@ -86,6 +84,11 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="Sets number of workers for training.")
+    parser.add_argument(
+        "--num-cpus",
+        type=int,
+        default=1,
+        help="Sets number of cpus for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=5, help="Number of epochs to train.")
     parser.add_argument(
@@ -174,12 +177,14 @@ if __name__ == "__main__":
         data = trainer1.train(max_retries=1, info=info,
                                     reduce_results=False)
     trainer1.shutdown()
+    print(os.getcwd())
     print("-----------------------")
     print("success!")
     print("num workers:", args.num_workers)
     print("fp16:", args.fp16)
     print("ZeRO:", args.use_deepspeed)
     print("throughput: {} img/sec".format(data[img_sec]))
+    # TODO use something based on experiment dir
     experiment_name = 'num_workers_' + str(args.num_workers) + 'fp16_' + str(args.fp16) + \
                       'ZeRO_' + str(args.use_deepspeed)
     data = summarize_mem_usage(data, display=True, save=experiment_name)
