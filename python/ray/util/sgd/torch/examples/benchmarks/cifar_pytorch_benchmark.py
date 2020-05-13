@@ -119,6 +119,7 @@ if __name__ == "__main__":
         def setup(self, config):
             super(Training, self).setup(config)
             self.batch_size = config[BATCH_SIZE]
+            self.gpu_stats = None
 
         def train_batch(self, batch, batch_info):
             def benchmark():
@@ -132,11 +133,17 @@ if __name__ == "__main__":
             time = timeit.timeit(benchmark, number=1)
             img_sec = args.num_workers * self.batch_size / time
 
-            stats = get_gpu_mem_usage()
-            stats["img_sec"] = img_sec
-            return stats
+            self.gpu_stats = get_gpu_mem_usage(data=self.gpu_stats)
+            self.gpu_stats["img_sec"].append(img_sec)
+            return self.gpu_stats
 
-    num_cpus = 4 if args.smoke_test else None
+    print("-----------------------")
+    print("starting")
+    print("num workers:", args.num_workers)
+    print("fp16:", args.fp16)
+    print("ZeRO:", args.use_deepspeed)
+    print("-----------------------")
+
     ray.init(address=args.address, num_cpus=num_cpus, log_to_driver=True,
              include_webui=False)
 
@@ -150,7 +157,6 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         config={
             "lr": 0.1,
-            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
             BATCH_SIZE: 128 * args.num_workers
         },
@@ -160,24 +166,21 @@ if __name__ == "__main__":
         use_tqdm=True,
         training_operator_cls=Training)
     pbar = trange(args.num_epochs, unit="epoch")
-    stats = []
+    data = None
     for i in pbar:
-        info = {"num_steps": 1} if args.smoke_test else {}
         info["epoch_idx"] = i
         info["num_epochs"] = args.num_epochs
         # Increase `max_retries` to turn on fault tolerance.
-        stats.append(trainer1.train(max_retries=1, info=info,
-                                    reduce_results=False))
-        print(stats)
-    train_stats = {
-        "img_sec": np.mean([np.mean([d["img_sec"] for d in epoch] for epoch in stats)])
-        }
+        data = trainer1.train(max_retries=1, info=info,
+                                    reduce_results=False)
     trainer1.shutdown()
-    print("success!")
     print("-----------------------")
+    print("success!")
     print("num workers:", args.num_workers)
     print("fp16:", args.fp16)
     print("ZeRO:", args.use_deepspeed)
-    print("throughput: {} img/sec".format(train_stats['img_sec']))
-    print("GPU Memory Usage:")
-    print("----------------------")
+    print("throughput: {} img/sec".format(data[img_sec]))
+    experiment_name = 'num_workers_' + str(args.num_workers) + 'fp16_' + str(args.fp16) + \
+                      'ZeRO_' + str(args.fp16)
+    data = summarize_mem_usage(data, display=True, save=experiment_name)
+    print("-----------------------")

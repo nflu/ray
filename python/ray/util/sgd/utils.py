@@ -7,6 +7,8 @@ import time
 import pandas as pd
 import nvidia_smi
 import torch
+import json
+from humanize import naturalsize
 
 import ray
 from ray.exceptions import RayActorError
@@ -254,15 +256,20 @@ def set_cuda_devices_list(num_devices):
     os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(devices[:num_devices])
 
 
-def get_gpu_mem_usage():
+def get_gpu_mem_usage(data=None):
     nvidia_smi.nvmlInit()
-    data = {"torch_allocated": 0,
-            "torch_max_allocated": 0,
-            "torch_reserved": 0,
-            "torch_max_reserved": 0,
-            "total_used": 0,
-            "total_max_used": 0,
-            "num_devices": torch.cuda.device_count()}
+    if data is None:
+        data = {"torch_allocated": [0],
+                "torch_max_allocated": [0],
+                "torch_reserved": [0],
+                "torch_max_reserved": [0],
+                "total_used": [0],
+                "total_max_used": [0],
+                "num_devices": [0]}
+    else:
+        for key in data.keys():
+            data[key].append(0)
+    data["num_devices"][-1] = torch.cuda.device_count()
 
     # collect data for each gpu and sum
     for device_index in range(torch.cuda.device_count()):
@@ -271,25 +278,32 @@ def get_gpu_mem_usage():
         gpu = "cuda:" + str(device_index)
 
         # total GPU memory usage from nvidia_smi
-        data["total_used"] += mem_res.used
-        data["total_max_used"] += mem_res.used  # will be maxed across time
+        data["total_used"][-1] += mem_res.used
+        data["total_max_used"][-1] += mem_res.used  # will be maxed across time
 
         # torch-specific GPU memory usage
-        data["torch_allocated"] += torch.cuda.memory_allocated(gpu)
-        data["torch_max_allocated"] += torch.cuda.max_memory_allocated(gpu)
-        data["torch_reserved"] += torch.cuda.memory_reserved(gpu)
-        data["torch_max_reserved"] += torch.cuda.max_memory_reserved(gpu)
+        data["torch_allocated"][-1] += torch.cuda.memory_allocated(gpu)
+        data["torch_max_allocated"][-1] += torch.cuda.max_memory_allocated(gpu)
+        data["torch_reserved"][-1] += torch.cuda.memory_reserved(gpu)
+        data["torch_max_reserved"][-1] += torch.cuda.max_memory_reserved(gpu)
     nvidia_smi.nvmlShutdown()
     return data
 
 
-def summarize_mem_usage(df):
-    import humanize  # makes memory usage human-readable
-    data = []
-    for col_name in df.columns:
+def summarize_mem_usage(data, display=False, save=False):
+    if save:
+        with open('data.json', 'w') as fp:
+            json.dump(data, fp)
+    for k in data.keys():
         # take max or average over time
-        if "max" in col_name:
-            data.append(humanize.naturalsize(df[col_name].max()))
+        if "max" in k:
+            data[k] = np.max(data[k])
         else:
-            data.append(humanize.naturalsize(df[col_name].mean()))
-    return pd.Series(data=data, index=df.mean().index)
+            data[k] = humanize.naturalsize(np.mean(data[k]))
+        if display:
+            val = data[k] if k == 'num_devices' else naturalsize(data[k])
+            print(k, ":", val)
+    return data
+
+
+
