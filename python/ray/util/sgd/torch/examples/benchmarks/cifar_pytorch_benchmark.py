@@ -7,16 +7,19 @@ from torchvision.datasets import CIFAR10
 import torchvision.transforms as transforms
 import timeit
 import numpy as np
+from datetime import datetime
 
-from tqdm import trange
+
+from tqdm import trange, tqdm
 
 import ray
 from ray.util.sgd.torch import TorchTrainer
-from ray.util.sgd.torch.resnet import ResNet50
+from ray.util.sgd.torch.resnet import ResNet50, ResNet101, ResNet152
 from ray.util.sgd.utils import BATCH_SIZE, get_gpu_mem_usage, summarize_mem_usage, set_cuda_devices_list
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.deepspeed.deepspeed_operator import DeepSpeedOperator
-
+from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
+                                          SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
 def initialization_hook():
     # Need this for avoiding a connection restart issue on AWS.
@@ -97,6 +100,11 @@ if __name__ == "__main__":
         default=False,
         help="Enables GPU training")
     parser.add_argument(
+        "--model",
+        type=int,
+        default=50,
+        help="resnet model layers")
+    parser.add_argument(
         "--fp16",
         action="store_true",
         default=False,
@@ -137,21 +145,67 @@ if __name__ == "__main__":
             img_sec = args.num_workers * self.batch_size / time
 
             self.gpu_stats = get_gpu_mem_usage(data=self.gpu_stats)
+            if 'img_sec' not in self.gpu_stats:
+                self.gpu_stats['img_sec'] = []
             self.gpu_stats["img_sec"].append(img_sec)
             return self.gpu_stats
+
+        def train_epoch(self, iterator, info):
+            if self.use_tqdm and self.world_rank == 0:
+                desc = ""
+                if info is not None and "epoch_idx" in info:
+                    if "num_epochs" in info:
+                        desc = "{}/{}e".format(info["epoch_idx"] + 1,
+                                               info["num_epochs"])
+                    else:
+                        desc = "{}e".format(info["epoch_idx"] + 1)
+                _progress_bar = tqdm(
+                    total=info[NUM_STEPS] or len(self.train_loader),
+                    desc=desc,
+                    unit="batch",
+                    leave=False)
+
+            self.model.train()
+            for batch_idx, batch in enumerate(iterator):
+                batch_info = {
+                    "batch_idx": batch_idx,
+                    "global_step": self.global_step
+                }
+                batch_info.update(info)
+                metrics = self.train_batch(batch, batch_info=batch_info)
+
+                if self.use_tqdm and self.world_rank == 0:
+                    _progress_bar.n = batch_idx + 1
+                    postfix = {}
+                    if "train_loss" in metrics:
+                        postfix.update(loss=metrics["train_loss"])
+                    _progress_bar.set_postfix(postfix)
+
+                if self.scheduler and batch_info.get(
+                    SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
+                    self.scheduler.step()
+
+                self.global_step += 1
+
+            if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+                self.scheduler.step()
+
+            return metrics
 
     print("-----------------------")
     print("starting")
     print("num workers:", args.num_workers)
     print("fp16:", args.fp16)
     print("ZeRO:", args.use_deepspeed)
+    print("Resnet:", args.model)
     print("-----------------------")
+    model_creator = {50:ResNet50, 101:ResNet101, 152:ResNet152}[args.model]
 
-    ray.init(address=args.address, num_cpus=num_cpus, log_to_driver=True,
+    ray.init(address=args.address, num_cpus=args.num_cpus, log_to_driver=True,
              include_webui=False)
 
     trainer1 = TorchTrainer(
-        model_creator=ResNet50,
+        model_creator=model_creator,
         data_creator=cifar_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=nn.CrossEntropyLoss,
@@ -161,7 +215,8 @@ if __name__ == "__main__":
         config={
             "lr": 0.1,
             # this will be split across workers.
-            BATCH_SIZE: 128 * args.num_workers
+            BATCH_SIZE: 128 * args.num_workers,
+            "test_mode":False
         },
         use_gpu=args.use_gpu,
         scheduler_step_freq="epoch",
@@ -171,21 +226,30 @@ if __name__ == "__main__":
     pbar = trange(args.num_epochs, unit="epoch")
     data = None
     for i in pbar:
+        info = {}
         info["epoch_idx"] = i
         info["num_epochs"] = args.num_epochs
         # Increase `max_retries` to turn on fault tolerance.
         data = trainer1.train(max_retries=1, info=info,
                                     reduce_results=False)
     trainer1.shutdown()
+
+    # TODO use something based on experiment dir
+    now = datetime.now()
+    os.chdir(os.path.expanduser("~"))
+    experiment_name = 'num_workers_' + str(args.num_workers) + 'fp16_' + str(args.fp16) + \
+                        'ZeRO_' + str(args.use_deepspeed) + 'Resnet_' + str(args.model) + \
+                            now.strftime("%m-%d-%Y-%H_%M_%S")
+    dirname = os.path.join('ray_results', experiment_name)
+    if not os.path.exists(dirname):
+        os.mkdir(dirname)
+    os.chdir(dirname)
     print(os.getcwd())
     print("-----------------------")
     print("success!")
     print("num workers:", args.num_workers)
     print("fp16:", args.fp16)
     print("ZeRO:", args.use_deepspeed)
-    print("throughput: {} img/sec".format(data[img_sec]))
-    # TODO use something based on experiment dir
-    experiment_name = 'num_workers_' + str(args.num_workers) + 'fp16_' + str(args.fp16) + \
-                      'ZeRO_' + str(args.use_deepspeed)
-    data = summarize_mem_usage(data, display=True, save=experiment_name)
+    print("Resnet:", args.model)
+    summarize_mem_usage(data, display=True, save='data')
     print("-----------------------")

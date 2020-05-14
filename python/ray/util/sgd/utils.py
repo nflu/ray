@@ -290,19 +290,22 @@ def get_gpu_mem_usage(data=None):
     return data
 
 
-def summarize_mem_usage(data, display=False, save=False):
+def summarize_mem_usage(data, display=False, save=None):
     if save:
-        with open('data.json', 'w') as fp:
-            json.dump(data, fp)
-    for k in data.keys():
-        # take max or average over time
-        if "max" in k:
-            data[k] = np.max(data[k])
-        else:
-            data[k] = humanize.naturalsize(np.mean(data[k]))
+        with open(save + '.json', 'w') as fp:
+            json.dump({'data': data}, fp)
+    for i, gpu_data in enumerate(data):
         if display:
-            val = data[k] if k == 'num_devices' else naturalsize(data[k])
-            print(k, ":", val)
+            print('gpu index:', i)
+        for k in gpu_data.keys():
+            # take max or average over time
+            if "max" in k:
+                gpu_data[k] = np.max(gpu_data[k])
+            else:
+                gpu_data[k] = np.mean(gpu_data[k])
+            if display:
+                val = gpu_data[k] if k in ['num_devices', 'img_sec'] else naturalsize(gpu_data[k])
+                print(k, ":", val)
     return data
 
 
