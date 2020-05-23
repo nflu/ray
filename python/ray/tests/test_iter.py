@@ -9,6 +9,14 @@ from ray.util.iter import from_items, from_iterators, from_range, \
 from ray.test_utils import Semaphore
 
 
+def test_select_shards(ray_start_regular_shared):
+    it = from_items([1, 2, 3, 4], num_shards=4)
+    it1 = it.select_shards([0, 2])
+    it2 = it.select_shards([1, 3])
+    assert it1.take(4) == [1, 3]
+    assert it2.take(4) == [2, 4]
+
+
 def test_metrics(ray_start_regular_shared):
     it = from_items([1, 2, 3, 4], num_shards=1)
     it2 = from_items([1, 2, 3, 4], num_shards=1)
@@ -21,17 +29,9 @@ def test_metrics(ray_start_regular_shared):
     it = it.gather_sync().for_each(f)
     it2 = it2.gather_sync().for_each(f)
 
-    # Context cannot be accessed outside the iterator.
-    with pytest.raises(ValueError):
-        LocalIterator.get_metrics()
-
     # Tests iterators have isolated contexts.
     assert it.take(4) == [1, 3, 6, 10]
     assert it2.take(4) == [1, 3, 6, 10]
-
-    # Context cannot be accessed outside the iterator.
-    with pytest.raises(ValueError):
-        LocalIterator.get_metrics()
 
 
 def test_zip_with_source_actor(ray_start_regular_shared):
