@@ -17,7 +17,7 @@ from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.resnet import ResNet50, ResNet101, ResNet152
 from ray.util.sgd.utils import BATCH_SIZE, get_gpu_mem_usage, summarize_mem_usage, set_cuda_devices_list
 from ray.util.sgd.torch import TrainingOperator
-from ray.util.sgd.torch.deepspeed.deepspeed_operator import DeepSpeedOperator
+from ray.util.sgd.torch.deepspeed.deepspeed_operator import deepspeed_cls
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 
@@ -124,8 +124,7 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
     set_cuda_devices_list(args.num_workers)
-    SuperClass = DeepSpeedOperator if args.use_deepspeed else TrainingOperator
-    class Training(SuperClass):
+    class Training(TrainingOperator):
 
         def setup(self, config):
             super(Training, self).setup(config)
@@ -199,6 +198,9 @@ if __name__ == "__main__":
     print("ZeRO:", args.use_deepspeed)
     print("Resnet:", args.model)
     print("-----------------------")
+
+    train_op_cls = deepspeed_cls(Training) if args.use_deepspeed else Training
+
     model_creator = {50:ResNet50, 101:ResNet101, 152:ResNet152}[args.model]
 
     ray.init(address=args.address, num_cpus=args.num_cpus, log_to_driver=True,
@@ -222,7 +224,7 @@ if __name__ == "__main__":
         scheduler_step_freq="epoch",
         use_fp16=args.fp16,
         use_tqdm=True,
-        training_operator_cls=Training)
+        training_operator_cls=train_op_cls)
     pbar = trange(args.num_epochs, unit="epoch")
     data = None
     for i in pbar:

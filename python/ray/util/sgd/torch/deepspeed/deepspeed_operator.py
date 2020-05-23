@@ -7,24 +7,31 @@ from datetime import timedelta
 from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 
 
-class DeepSpeedOperator(TrainingOperator):
+def deepspeed_cls(base_operator_cls=TrainingOperator):
+    assert issubclass(base_operator_cls, TrainingOperator)
+    
+    class DeepSpeedOperator(base_operator_cls):
+    
+        def setup(self, config):
+            super(DeepSpeedOperator, self).setup(config)
 
-    def setup(self, config):
-        # only one process ray will not initialize process group
-        # but deepspeed expects process group anyways
-        if not dist.is_initialized():
-            backend = "nccl"  # used by deepspeed but ray also supports gloo
-            # Compute URL for initializing distributed PyTorch
-            ip = ray.services.get_node_ip_address()
-            port = TORCH_DISTRIBUTED_DEFAULT_PORT  # TODO something more robust here
+            # only one process ray will not initialize process group
+            # but deepspeed expects process group anyways
+            if not dist.is_initialized():
+                backend = "nccl"  # used by deepspeed but ray also supports gloo
+                # Compute URL for initializing distributed PyTorch
+                ip = ray.services.get_node_ip_address()
+                port = TORCH_DISTRIBUTED_DEFAULT_PORT  # TODO something more robust here
+    
+                address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+                timeout = timedelta(seconds=NCCL_TIMEOUT_S)
+                dist.init_process_group(backend=backend,
+                                        init_method=address,
+                                        rank=0,
+                                        world_size=1,
+                                        timeout=timeout)
+    
+            # wrap optimizers to be deepspeed optimizers
+            self._optimizers = [FP16_DeepSpeedZeroOptimizer(op) for op in self._optimizers]
 
-            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-            timeout = timedelta(seconds=NCCL_TIMEOUT_S)
-            dist.init_process_group(backend=backend,
-                                    init_method=address,
-                                    rank=0,
-                                    world_size=1,
-                                    timeout=timeout)
-
-        # wrap optimizers to be deepspeed optimizers
-        self._optimizers = [FP16_DeepSpeedZeroOptimizer(op) for op in self._optimizers]
+    return DeepSpeedOperator
