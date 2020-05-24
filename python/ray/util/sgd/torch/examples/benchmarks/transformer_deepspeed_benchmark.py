@@ -2,6 +2,7 @@ import argparse
 import logging
 import json
 import os
+from dataclasses import dataclass, field
 
 import torch
 from tqdm import trange
@@ -26,26 +27,27 @@ from ray.util.sgd.torch.deepspeed.deepspeed_operator import deepspeed_cls
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class DeepSpeedArguments:
+    use_deepspeed: bool = field(
+        default=False,
+        metadata={"help": "Use GPU memory optimizations from ZeRO"})
 
 
 def main():
     parser = HfArgumentParser((ModelArguments, DataProcessingArguments,
-                               TrainingArguments, RayArguments))
-    parser.add_argument(
-        "--use-deepspeed",
-        action="store_true",
-        default=False,
-        help="Use the GPU memory optimizations from ZeRO")
+                               TrainingArguments, RayArguments, DeepSpeedArguments))
     all_args = parser.parse_args_into_dataclasses()
-    model_args, dataprocessing_args, training_args, ray_args = all_args
+    model_args, dataprocessing_args, training_args, ray_args, deepspeed_args = all_args
 
     # For now, let's merge all the sets of args into one,
     # but soon, we'll keep distinct sets of args, with a
     # cleaner separation of concerns.
     args = argparse.Namespace(**vars(model_args), **vars(dataprocessing_args),
-                              **vars(training_args), **vars(ray_args))
+                              **vars(training_args), **vars(ray_args), **vars(deepspeed_args))
 
     if args.use_deepspeed:
+        logger.info("Using DeepSpeed")
         operator = deepspeed_cls(TransformerOperator)
     else:
         operator = TransformerOperator
