@@ -315,7 +315,7 @@ def main():
             "Output directory ({}) already exists and is not empty. "
             "Use --overwrite_output_dir to overcome.".format(args.output_dir))
 
-    use_gpu = not args.no_cuda
+    use_gpu = torch.cuda.is_available() and not args.no_cuda
 
     # Prepare GLUE task
     args.task_name = args.task_name.lower()
@@ -343,7 +343,7 @@ def main():
         use_tqdm=True,
         config={"args": args})
 
-    args.device = torch.device("cuda" if use_gpu else "cpu")
+    args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     tokenizer = trainer.get_local_operator().tokenizer
     local_model = trainer.get_model()

@@ -4,15 +4,17 @@ import logging
 import numpy as np
 import socket
 import time
-import pandas as pd
 import nvidia_smi
 import torch
 import json
 from humanize import naturalsize
+import timeit
+from tqdm import tqdm
 
 import ray
 from ray.exceptions import RayActorError
-
+from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
+                                          SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 import os
 logger = logging.getLogger(__name__)
 
@@ -256,20 +258,15 @@ def set_cuda_devices_list(num_devices):
     os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(devices[:num_devices])
 
 
-def get_gpu_mem_usage(data=None):
+def get_gpu_mem_usage():
     nvidia_smi.nvmlInit()
-    if data is None:
-        data = {"torch_allocated": [0],
-                "torch_max_allocated": [0],
-                "torch_reserved": [0],
-                "torch_max_reserved": [0],
-                "total_used": [0],
-                "total_max_used": [0],
-                "num_devices": [0]}
-    else:
-        for key in data.keys():
-            data[key].append(0)
-    data["num_devices"][-1] = torch.cuda.device_count()
+    data = {"torch_allocated": 0,
+            "torch_max_allocated": 0,
+            "torch_reserved": 0,
+            "torch_max_reserved": 0,
+            "total_used": 0,
+            "total_max_used": 0,
+            "num_devices": torch.cuda.device_count()}
 
     # collect data for each gpu and sum
     for device_index in range(torch.cuda.device_count()):
@@ -278,36 +275,69 @@ def get_gpu_mem_usage(data=None):
         gpu = "cuda:" + str(device_index)
 
         # total GPU memory usage from nvidia_smi
-        data["total_used"][-1] += mem_res.used
-        data["total_max_used"][-1] += mem_res.used  # will be maxed across time
+        # note this can be a little misleading if there are other processes runnning on the machine
+        data["total_used"] += mem_res.used
+        data["total_max_used"] += mem_res.used  # will be maxed across time
 
         # torch-specific GPU memory usage
-        data["torch_allocated"][-1] += torch.cuda.memory_allocated(gpu)
-        data["torch_max_allocated"][-1] += torch.cuda.max_memory_allocated(gpu)
-        data["torch_reserved"][-1] += torch.cuda.memory_reserved(gpu)
-        data["torch_max_reserved"][-1] += torch.cuda.max_memory_reserved(gpu)
+        data["torch_allocated"] += torch.cuda.memory_allocated(gpu)
+        data["torch_max_allocated"] += torch.cuda.max_memory_allocated(gpu)
+        data["torch_reserved"] += torch.cuda.memory_reserved(gpu)
+        data["torch_max_reserved"] += torch.cuda.max_memory_reserved(gpu)
     nvidia_smi.nvmlShutdown()
     return data
 
 
-def summarize_mem_usage(data, display=False, save=None):
-    if save:
-        with open(save + '.json', 'w') as fp:
-            json.dump({'data': data}, fp)
-    for i, gpu_data in enumerate(data):
+def save_epoch_data(data, save_iteration, directory):
+    file_name = 'epoch_data' + str(save_iteration) + '_.json'
+    path = os.path.join(directory, file_name)
+    with open(path, 'w') as fp:
+        json.dump({'data': data}, fp)
+    return path
+
+
+def summarize_mem_usage(data, display=False, file_name=None):
+    # TODO save data from each iteration and put it together and then use this to summarize
+
+    '''
+    for k in data.keys():
         if display:
-            print('gpu index:', i)
-        for k in gpu_data.keys():
-            # take max or average over time
-            if "max" in k:
-                gpu_data[k] = np.max(gpu_data[k])
-            else:
-                gpu_data[k] = np.mean(gpu_data[k])
-            if display:
-                val = gpu_data[k] if k in ['num_devices', 'img_sec'] else naturalsize(gpu_data[k])
-                print(k, ":", val)
+            val = gpu_data[k] if k in ['num_devices', 'img_sec'] else naturalsize(gpu_data[k])
+            print(k, ":", val)
+    '''
     return data
 
 
+def get_benchmark_cls(base_operator_cls=None):
+    from ray.util.sgd.torch.training_operator import TrainingOperator
+    if base_operator_cls is None:
+        base_operator_cls = TrainingOperator
+
+    assert issubclass(base_operator_cls, TrainingOperator)
+
+    class BenchmarkOperator(base_operator_cls):
+
+        def setup(self, config):
+            super(BenchmarkOperator, self).setup(config)
+            self.num_workers = config['num_workers']
+            self.batch_size = config[BATCH_SIZE]
+            print("per worker batch size:", self.batch_size)
 
 
+        def train_batch(self, batch, batch_info):
+            def benchmark():
+                return super(BenchmarkOperator, self).train_batch(batch, batch_info)
+
+            if self.global_step == 0:
+                print("Running warmup...")
+                timeit.timeit(benchmark, number=1)
+                self.global_step += 1
+
+            time = timeit.timeit(benchmark, number=1)
+            samples_sec = self.num_workers * self.batch_size / time
+
+            gpu_stats = get_gpu_mem_usage()
+            gpu_stats["samples_sec"] = samples_sec
+            return gpu_stats
+
+    return BenchmarkOperator

@@ -1,5 +1,5 @@
-from ray.util.sgd.torch import TrainingOperator
 import ray
+from ray.util.sgd.torch.training_operator import TrainingOperator
 from deepspeed.pt.deepspeed_zero_optimizer import FP16_DeepSpeedZeroOptimizer
 import torch.distributed as dist
 from deepspeed.pt.deepspeed_constants import TORCH_DISTRIBUTED_DEFAULT_PORT
@@ -18,7 +18,7 @@ def deepspeed_cls(base_operator_cls=TrainingOperator):
             # only one process ray will not initialize process group
             # but deepspeed expects process group anyways
             if not dist.is_initialized():
-                backend = "nccl"  # used by deepspeed but ray also supports gloo
+                backend = "nccl"
                 # Compute URL for initializing distributed PyTorch
                 ip = ray.services.get_node_ip_address()
                 port = TORCH_DISTRIBUTED_DEFAULT_PORT  # TODO something more robust here
