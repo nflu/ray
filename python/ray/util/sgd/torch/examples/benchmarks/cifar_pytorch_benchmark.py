@@ -15,7 +15,9 @@ from tqdm import trange, tqdm
 import ray
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.resnet import ResNet50, ResNet101, ResNet152
-from ray.util.sgd.utils import BATCH_SIZE, get_gpu_mem_usage, summarize_mem_usage, set_cuda_devices_list
+from ray.util.sgd.utils import (BATCH_SIZE, get_gpu_mem_usage,
+                                summarize_mem_usage, set_cuda_devices_list,
+                                get_benchmark_cls)
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.deepspeed.deepspeed_operator import deepspeed_cls
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
@@ -124,72 +126,7 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
     set_cuda_devices_list(args.num_workers)
-    class Training(TrainingOperator):
 
-        def setup(self, config):
-            super(Training, self).setup(config)
-            self.batch_size = config[BATCH_SIZE]
-            self.gpu_stats = None
-
-        def train_batch(self, batch, batch_info):
-            def benchmark():
-                return super(Training, self).train_batch(batch, batch_info)
-
-            if self.global_step == 0:
-                print("Running warmup...")
-                timeit.timeit(benchmark, number=1)
-                self.global_step += 1
-
-            time = timeit.timeit(benchmark, number=1)
-            img_sec = args.num_workers * self.batch_size / time
-
-            self.gpu_stats = get_gpu_mem_usage(data=self.gpu_stats)
-            if 'img_sec' not in self.gpu_stats:
-                self.gpu_stats['img_sec'] = []
-            self.gpu_stats["img_sec"].append(img_sec)
-            return self.gpu_stats
-
-        def train_epoch(self, iterator, info):
-            if self.use_tqdm and self.world_rank == 0:
-                desc = ""
-                if info is not None and "epoch_idx" in info:
-                    if "num_epochs" in info:
-                        desc = "{}/{}e".format(info["epoch_idx"] + 1,
-                                               info["num_epochs"])
-                    else:
-                        desc = "{}e".format(info["epoch_idx"] + 1)
-                _progress_bar = tqdm(
-                    total=info[NUM_STEPS] or len(self.train_loader),
-                    desc=desc,
-                    unit="batch",
-                    leave=False)
-
-            self.model.train()
-            for batch_idx, batch in enumerate(iterator):
-                batch_info = {
-                    "batch_idx": batch_idx,
-                    "global_step": self.global_step
-                }
-                batch_info.update(info)
-                metrics = self.train_batch(batch, batch_info=batch_info)
-
-                if self.use_tqdm and self.world_rank == 0:
-                    _progress_bar.n = batch_idx + 1
-                    postfix = {}
-                    if "train_loss" in metrics:
-                        postfix.update(loss=metrics["train_loss"])
-                    _progress_bar.set_postfix(postfix)
-
-                if self.scheduler and batch_info.get(
-                    SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
-                    self.scheduler.step()
-
-                self.global_step += 1
-
-            if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
-                self.scheduler.step()
-
-            return metrics
 
     print("-----------------------")
     print("starting")
@@ -199,7 +136,8 @@ if __name__ == "__main__":
     print("Resnet:", args.model)
     print("-----------------------")
 
-    train_op_cls = deepspeed_cls(Training) if args.use_deepspeed else Training
+    Benchmark = get_benchmark_cls()
+    TrainOp = deepspeed_cls(Benchmark) if args.use_deepspeed else Benchmark
 
     model_creator = {50:ResNet50, 101:ResNet101, 152:ResNet152}[args.model]
 
@@ -224,7 +162,7 @@ if __name__ == "__main__":
         scheduler_step_freq="epoch",
         use_fp16=args.fp16,
         use_tqdm=True,
-        training_operator_cls=train_op_cls)
+        training_operator_cls=TrainOp)
     pbar = trange(args.num_epochs, unit="epoch")
     data = None
     for i in pbar:

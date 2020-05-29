@@ -102,8 +102,6 @@ def main():
         level=logging.INFO)
     logger.info("Training/evaluation parameters %s", args)
 
-    os.environ['CUDA_DEVICE_LIST'] = '1,2,3,'
-
     ray.init(address=args.address)
     # Training
 

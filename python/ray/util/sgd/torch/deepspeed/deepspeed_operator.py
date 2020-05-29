@@ -32,6 +32,7 @@ def deepspeed_cls(base_operator_cls=TrainingOperator):
                                         timeout=timeout)
     
             # wrap optimizers to be deepspeed optimizers
+            # TODO pass kwargs fron config
             self._optimizers = [FP16_DeepSpeedZeroOptimizer(op) for op in self._optimizers]
 
     return DeepSpeedOperator
