@@ -1,6 +1,6 @@
 import ray
 from ray.util.sgd.torch.training_operator import TrainingOperator
-from deepspeed.pt.deepspeed_zero_optimizer import FP16_DeepSpeedZeroOptimizer
+from deepspeed.pt.deepspeed_zero_optimizer import FP16_DeepSpeedZeroOptimizer as DeepSpeedOpt
 import torch.distributed as dist
 from deepspeed.pt.deepspeed_constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from datetime import timedelta
@@ -30,9 +30,11 @@ def deepspeed_cls(base_operator_cls=TrainingOperator):
                                         rank=0,
                                         world_size=1,
                                         timeout=timeout)
-    
-            # wrap optimizers to be deepspeed optimizers
-            # TODO pass kwargs fron config
-            self._optimizers = [FP16_DeepSpeedZeroOptimizer(op) for op in self._optimizers]
+
+            # can be used to configure buffer size and communication strategy
+            deepspeed_config = config.get('deepspeed_kwargs', {})
+
+            # wrap optimizers to be deep speed optimizers
+            self._optimizers = [DeepSpeedOpt(op, **deepspeed_config) for op in self._optimizers]
 
     return DeepSpeedOperator
